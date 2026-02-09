@@ -3,9 +3,9 @@ Main Game Logic - Quantum Mus Game
 """
 
 import logging
-from Logica_cuantica.baraja import QuantumDeck
-from Logica_cuantica.dealer import QuantumDealer
-from Logica_cuantica.cartas import QuantumCard
+from quantum.baraja import QuantumDeck
+from quantum.dealer import QuantumDealer
+from quantum.cartas import QuantumCard
 from round_handlers import RoundHandler
 from quantum_collapse import QuantumCollapseManager
 from entanglement_system import EntanglementSystem
