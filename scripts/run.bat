@@ -6,6 +6,9 @@ echo   Quantum Mus Backend Server
 echo ========================================
 echo.
 
+REM Navigate to project root
+cd /d "%~dp0\.."
+
 REM Check if virtual environment exists
 if not exist "venv\" (
     echo Creating virtual environment...
@@ -22,10 +25,10 @@ echo Installing dependencies...
 pip install -r requirements.txt --quiet
 echo.
 
-REM Run server
+REM Run server from backend directory
 echo Starting server on http://localhost:5000
 echo Press Ctrl+C to stop
 echo.
-python server.py
+cd backend && python server.py
 
 pause

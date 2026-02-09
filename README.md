@@ -1,6 +1,62 @@
-# Quantum Mus Backend
+# Quantum Mus
 
-Backend server for the Quantum Mus multiplayer card game using Flask and Socket.IO.
+A multiplayer quantum card game using Flask, Socket.IO, and Qiskit. This project features real-time WebSocket communication and quantum mechanics in card gameplay.
+
+> **🎮 Want to start playing right now?** See **[HOW_TO_PLAY.md](HOW_TO_PLAY.md)** for a quick 3-step guide!
+
+## 📁 Project Structure
+
+```
+├── backend/                    # Backend Python server
+│   ├── server.py              # Main Flask + Socket.IO server
+│   ├── game_manager.py        # Manages active game instances
+│   ├── room_manager.py        # Manages game rooms/lobbies
+│   ├── game_logic.py          # Main game state and logic
+│   ├── round_handlers.py      # Round-specific logic (MUS, GRANDE, CHICA)
+│   ├── card_deck.py           # Quantum card and deck management
+│   ├── models.py              # Database models
+│   └── quantum/               # Quantum logic module
+│       ├── baraja.py          # Quantum deck
+│       ├── cartas.py          # Quantum cards
+│       ├── dealer.py          # Dealer logic
+│       ├── efecto_tunel.py    # Tunnel effect
+│       └── jugador.py         # Player logic
+│
+├── frontend/                   # Frontend HTML/JS/CSS
+│   ├── index.html             # Main game interface
+│   ├── schrodinger-timer.html # Timer interface
+│   ├── test-probabilities.html # Testing interface
+│   ├── js/                    # JavaScript files
+│   │   ├── game.js            # Main game logic
+│   │   ├── navigation.js      # Navigation handling
+│   │   ├── config.js          # Configuration
+│   │   └── ...
+│   ├── css/                   # Stylesheets
+│   │   ├── styles.css         # Main styles
+│   │   └── navigation-styles.css
+│   └── assets/                # Static assets
+│       └── generate-cards.js
+│
+├── tests/                      # Test files
+│   ├── test_client.py
+│   ├── test_auto_client2.py
+│   ├── test_collapse_determinism.py
+│   └── test_grande_phase.py
+│
+├── docs/                       # Documentation
+│   ├── QUICKSTART.md          # Quick start guide
+│   ├── BACKEND_STRUCTURE.md   # Backend documentation
+│   ├── DEPLOYMENT.md          # Deployment guide
+│   └── ...                    # Additional documentation
+│
+├── scripts/                    # Utility scripts
+│   ├── run.sh                 # Unix run script
+│   └── run.bat                # Windows run script
+│
+├── requirements.txt            # Python dependencies
+├── Procfile                   # Deployment configuration
+└── README.md                  # This file
+```
 
 ## Features
 
@@ -12,7 +68,21 @@ Backend server for the Quantum Mus multiplayer card game using Flask and Socket.
 - **SQLite database** for game history and statistics
 - **RESTful API** endpoints
 
-## Installation
+## 🚀 Quick Start
+
+### Using the run scripts (recommended)
+
+**Unix/Linux/Mac:**
+```bash
+./scripts/run.sh
+```
+
+**Windows:**
+```batch
+scripts\run.bat
+```
+
+### Manual installation
 
 1. Install Python dependencies:
 ```bash
@@ -21,10 +91,13 @@ pip install -r requirements.txt
 
 2. Run the server:
 ```bash
+cd backend
 python server.py
 ```
 
-The server will start on `http://localhost:5000`
+The server will start on `http://localhost:5000` and serve the frontend from the `frontend/` directory.
+
+3. Open your browser and navigate to `http://localhost:5000` to play the game.
 
 ## API Endpoints
 
@@ -65,17 +138,13 @@ The server will start on `http://localhost:5000`
 
 ## Architecture
 
-```
-backend/
-├── server.py              # Main Flask + Socket.IO server
-├── game_manager.py        # Manages active game instances
-├── room_manager.py        # Manages game rooms/lobbies
-├── game_logic.py          # Main game state and logic
-├── round_handlers.py      # Round-specific logic (MUS, GRANDE, CHICA)
-├── card_deck.py           # Quantum card and deck management
-├── models.py              # Database models
-└── requirements.txt       # Python dependencies
-```
+The project follows a clean separation between backend and frontend:
+
+- **Backend** (`backend/`): Flask + Socket.IO server handling game logic, room management, and WebSocket communication
+- **Frontend** (`frontend/`): HTML/CSS/JavaScript client for the game interface
+- **Tests** (`tests/`): Test files for validating game functionality
+- **Docs** (`docs/`): Comprehensive documentation for the project
+- **Scripts** (`scripts/`): Helper scripts for running the application
 
 ## Game Flow
 
@@ -119,7 +188,7 @@ backend/
 
 ## Configuration
 
-Edit `server.py` to configure:
+Edit `backend/server.py` to configure:
 - Database URI
 - Secret key
 - CORS settings
@@ -129,12 +198,19 @@ Edit `server.py` to configure:
 
 Run in debug mode:
 ```bash
+cd backend
 python server.py
 ```
 
 The server will auto-reload on code changes.
 
 ## Testing
+
+Run the tests:
+```bash
+cd tests
+python test_client.py
+```
 
 Test WebSocket connection:
 ```javascript
@@ -150,3 +226,11 @@ socket.on('connect', () => {
   });
 });
 ```
+
+## 📚 Documentation
+
+For more detailed information, see the documentation in the `docs/` directory:
+- [QUICKSTART.md](docs/QUICKSTART.md) - Quick start guide
+- [BACKEND_STRUCTURE.md](docs/BACKEND_STRUCTURE.md) - Backend architecture
+- [DEPLOYMENT.md](docs/DEPLOYMENT.md) - Deployment instructions
+- [SOCKET_PROTOCOL.md](docs/SOCKET_PROTOCOL.md) - WebSocket protocol documentation

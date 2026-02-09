@@ -18,8 +18,8 @@ try:
 except Exception:
     eventlet = None
 
-# Directorio del frontend (padre del backend) para servir archivos estáticos
-FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# Directorio del frontend (carpeta frontend en el padre del backend) para servir archivos estáticos
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend'))
 
 # CORS: orígenes permitidos
 # En producción (Render), especificar ALLOWED_ORIGINS con dominios explícitos
@@ -57,7 +57,7 @@ CORS_ORIGINS = _get_cors_origins()
 from game_manager import GameManager
 from room_manager import RoomManager
 from models import db, Game, Player, GameHistory
-from Logica_cuantica.baraja import QuantumDeck
+from quantum.baraja import QuantumDeck
 
 # Configure
 # Configure logging

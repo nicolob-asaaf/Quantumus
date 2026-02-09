@@ -3,6 +3,11 @@ Test script for Grande Phase Betting Dynamics
 Demonstrates the detailed Mus betting rules implementation
 """
 
+import sys
+import os
+# Add backend to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+
 import logging
 from game_logic import QuantumMusGame
 

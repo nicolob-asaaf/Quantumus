@@ -3,6 +3,11 @@ Test to verify quantum collapse determinism across multiple clients
 Ensures that all players in the same room see the same card collapses
 """
 
+import sys
+import os
+# Add backend to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+
 import logging
 from card_deck import QuantumCard, QuantumDeck
 from quantum_collapse import QuantumCollapseManager
