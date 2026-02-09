@@ -229,14 +229,33 @@ class CardGenerator {
               stroke-width="1.2" opacity="0.6"/>
         
         <!-- Friendly expression -->
-        <path d="M30,38" fill="none" stroke="#a78bfa" stroke-width="2" 
-              stroke-linecap="round" opacity="0.7"/>
-        <path d="M50,38" fill="none" stroke="#a78bfa" stroke-width="2" 
+        <path d="M30,38 Q40,44 50,38" 
+              fill="none" stroke="#a78bfa" stroke-width="2" 
               stroke-linecap="round" opacity="0.7"/>
         
         <!-- Eyes -->
         <circle cx="30" cy="28" r="2.5" fill="#a78bfa" opacity="0.8"/>
         <circle cx="50" cy="28" r="2.5" fill="#a78bfa" opacity="0.8"/>
+      </svg>`,
+      
+      'martinis': `<svg width="80" height="100" viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg">
+        <!-- Head -->
+        <circle cx="40" cy="30" r="20" fill="none" stroke="#ffb347" stroke-width="2.5" opacity="0.85"/>
+        <!-- Wavy hair -->
+        <path d="M22,16 Q30,10 40,13 Q50,10 58,16" fill="none" stroke="#ffb347" stroke-width="2" opacity="0.75"/>
+        <path d="M24,18 Q35,13 40,15 Q45,13 56,18" fill="none" stroke="#ffb347" stroke-width="1.5" opacity="0.6"/>
+        <!-- Body -->
+        <path d="M20,52 Q40,70 60,52 L60,90 Q40,100 20,90 Z" fill="none" stroke="#ffb347" stroke-width="2.5" opacity="0.85"/>
+        <!-- Quantum lattice symbol (unique) -->
+        <circle cx="32" cy="73" r="4" fill="none" stroke="#ffb347" stroke-width="1.5" opacity="0.7"/>
+        <circle cx="40" cy="73" r="4" fill="none" stroke="#ffb347" stroke-width="1.5" opacity="0.7"/>
+        <circle cx="48" cy="73" r="4" fill="none" stroke="#ffb347" stroke-width="1.5" opacity="0.7"/>
+        <line x1="32" y1="73" x2="48" y2="73" stroke="#ffb347" stroke-width="1.2" opacity="0.6"/>
+        <!-- Friendly expression -->
+        <path d="M30,38 Q40,44 50,38" fill="none" stroke="#ffb347" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+        <!-- Eyes -->
+        <circle cx="30" cy="28" r="2.5" fill="#ffb347" opacity="0.8"/>
+        <circle cx="50" cy="28" r="2.5" fill="#ffb347" opacity="0.8"/>
       </svg>`,
       
       'Deutsch': `<svg width="80" height="100" viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg">
@@ -332,35 +351,6 @@ class CardGenerator {
       </svg>`,
       
       'Yunger Halpern': `<svg width="80" height="100" viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg">
-        <!-- Head -->
-        <circle cx="40" cy="30" r="20" 
-                fill="none" stroke="#ffb347" stroke-width="2.5" opacity="0.85"/>
-        
-        <!-- Wavy hair -->
-        <path d="M22,16 Q30,10 40,13 Q50,10 58,16" 
-              fill="none" stroke="#ffb347" stroke-width="2" opacity="0.75"/>
-        <path d="M24,18 Q35,13 40,15 Q45,13 56,18" 
-              fill="none" stroke="#ffb347" stroke-width="1.5" opacity="0.6"/>
-        
-        <!-- Body -->
-        <path d="M20,52 Q40,70 60,52 L60,90 Q40,100 20,90 Z" 
-              fill="none" stroke="#ffb347" stroke-width="2.5" opacity="0.85"/>
-        
-        <!-- Steampunk gear symbol -->
-        <circle cx="40" cy="73" r="6" fill="none" stroke="#ffb347" 
-                stroke-width="1.5" opacity="0.7"/>
-        <circle cx="40" cy="73" r="3" fill="none" stroke="#ffb347" 
-                stroke-width="1" opacity="0.6"/>
-        <circle cx="40" cy="73" r="1" fill="#ffb347" opacity="0.8"/>
-        <circle cx="47" cy="73" r="1.5" fill="#ffb347" opacity="0.7"/>
-        <circle cx="33" cy="73" r="1.5" fill="#ffb347" opacity="0.7"/>
-        
-        <!-- Eyes -->
-        <circle cx="30" cy="28" r="2.5" fill="#ffb347" opacity="0.8"/>
-        <circle cx="50" cy="28" r="2.5" fill="#ffb347" opacity="0.8"/>
-      </svg>`,
-      
-      'Nicole Yunger Halpern': `<svg width="80" height="100" viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg">
         <!-- Head -->
         <circle cx="40" cy="30" r="20" 
                 fill="none" stroke="#ffb347" stroke-width="2.5" opacity="0.85"/>

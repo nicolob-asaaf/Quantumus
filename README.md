@@ -1,101 +1,152 @@
-# Quantum Mus
+# Quantum Mus Backend
 
-**Juego de cartas para 4 jugadores** que combina las reglas del Mus con conceptos de física cuántica: superposición, entrelazamiento y notación de Dirac.
+Backend server for the Quantum Mus multiplayer card game using Flask and Socket.IO.
 
----
+## Features
 
-## Descripción
+- **Real-time multiplayer** using WebSocket (Socket.IO)
+- **Room management** for game lobbies
+- **Complete game logic** for Mus rounds (MUS, GRANDE, CHICA, PARES, JUEGO)
+- **Quantum card mechanics** (entanglement, superposition)
+- **Team-based gameplay** (2v2)
+- **SQLite database** for game history and statistics
+- **RESTful API** endpoints
 
-Quantum Mus es una versión del clásico juego español Mus en la que las cartas pueden estar en **estado superpuesto** o **entrelazadas** con las de tu compañero. Cada jugador elige un personaje inspirado en pioneros de la información cuántica (Preskill, Cirac, Zoller, Deutsch) y juega en equipos de dos. La interfaz usa una estética de “circuito cuántico” y notación |ψ⟩ en las cartas.
+## Installation
 
----
-
-## Características
-
-- **Portada** con referencia visual a lo cuántico (esfera tipo Bloch, ondas, partículas).
-- **Flujo de partida**: nombre → menú (Crear partida / Unirse) → lobby con código de sala.
-- **Lobby**: elección de personaje (cada uno solo una vez), modo 4 u 8 reyes, lista de jugadores.
-- **Modo demo**: botón para añadir 3 jugadores de prueba y jugar en solitario.
-- **Orientación por personaje**: tú siempre en la parte inferior; compañero arriba; oponentes a los lados.
-- **Cartas**: visibles solo las tuyas; las del compañero muestran solo el **brillo en el borde** cuando están entrelazadas con las tuyas (no se ve la carta).
-- **Modo 4 reyes**: A y K entrelazados por palo.
-- **Modo 8 reyes**: además, 2 y 3 entrelazados por palo.
-- **Animación de reparto** de cartas al inicio de la partida.
-- **Estilo**: paleta teal, violeta, coral y dorado; fondos tipo “blueprint” y puertas cuánticas (H, CNOT, M).
-
----
-
-## Cómo ejecutar
-
-### Solo frontend (sin backend)
-
-1. Abre la carpeta del proyecto.
-2. Abre `Frontend/index.html` en un navegador (doble clic o arrastrar al navegador).
-
-O sirve la carpeta con un servidor local, por ejemplo:
-
+1. Install Python dependencies:
 ```bash
-cd Frontend
-npx serve .
-# o: python -m http.server 8000
+pip install -r requirements.txt
 ```
 
-Luego entra en `http://localhost:3000` (o el puerto que indique).
-
-### Con backend (opcional)
-
-La carpeta `backend/` contiene `app.py` y `quantum-engine.py` para una posible API o lógica de partida. Si quieres usarlos, necesitas Python y las dependencias listadas en `backend/Requisements.py`.
-
----
-
-## Estructura del proyecto
-
-```
-CESGA/
-├── Frontend/
-│   ├── index.html          # Punto de entrada; pantallas (portada, menú, lobby, partida)
-│   ├── styles.css          # Estilos y animaciones
-│   ├── game.js             # Lógica del juego, cartas, reparto, entrelazamiento
-│   ├── navigation.js       # Navegación entre pantallas, lobby, personajes
-│   ├── assets/
-│   │   └── generate-cards.js  # Generación de Bloch spheres y personajes
-│   └── ENTANGLEMENT_GUIDE.md   # Guía de entrelazamiento (4/8 reyes)
-├── backend/
-│   ├── app.py
-│   ├── quantum-engine.py
-│   └── Requisements.py
-└── README.md
+2. Run the server:
+```bash
+python server.py
 ```
 
----
+The server will start on `http://localhost:5000`
 
-## Flujo de juego
+## API Endpoints
 
-1. **Portada** → Pulsar *JUGAR*.
-2. **Nombre** → Introducir nombre y continuar.
-3. **Menú** → *Crear partida* (eres host) o *Unirse a partida* (código de 4 caracteres).
-4. **Lobby**  
-   - Host: elige 4 u 8 reyes; todos eligen personaje (sin repetir).  
-   - Opción *Demo: añadir jugadores de prueba* para jugar solo.  
-   - *Iniciar partida* cuando haya 4 jugadores listos.
-5. **Partida** → Reparto animado; tú abajo, compañero arriba; solo ves tus cartas y el brillo entrelazado del compañero.
+### HTTP Endpoints
 
----
+- `GET /health` - Health check
+- `GET /api/rooms` - List available rooms
+- `POST /api/rooms` - Create a new room
+- `GET /api/stats` - Get game statistics
 
-## Tecnologías
+### WebSocket Events
 
-- **Frontend**: HTML5, CSS3, JavaScript (vanilla).
-- **Estilo**: variables CSS, gradientes, animaciones y keyframes.
-- **Backend** (opcional): Python.
+#### Client → Server
 
----
+- `connect` - Connect to server
+- `create_room` - Create a game room
+- `join_room` - Join a room
+- `leave_room` - Leave a room
+- `start_game` - Start the game (when 4 players ready)
+- `player_action` - Make a game action (MUS, PASO, ENVIDO, ORDAGO)
+- `discard_cards` - Discard cards during MUS phase
+- `get_game_state` - Request current game state
 
-## Documentación adicional
+#### Server → Client
 
-- **Entrelazamiento y modos**: ver `Frontend/ENTANGLEMENT_GUIDE.md` para 4 reyes, 8 reyes y mecánicas cuánticas en el juego.
+- `connected` - Connection confirmed
+- `room_created` - Room created successfully
+- `joined_room` - Successfully joined room
+- `left_room` - Left room
+- `room_updated` - Room state changed
+- `game_started` - Game has started
+- `game_update` - Game state updated
+- `cards_discarded` - Cards were discarded
+- `new_cards_dealt` - New cards dealt
+- `round_ended` - Round finished
+- `game_ended` - Game finished
+- `game_error` - Error occurred
 
----
+## Architecture
 
-## Créditos
+```
+backend/
+├── server.py              # Main Flask + Socket.IO server
+├── game_manager.py        # Manages active game instances
+├── room_manager.py        # Manages game rooms/lobbies
+├── game_logic.py          # Main game state and logic
+├── round_handlers.py      # Round-specific logic (MUS, GRANDE, CHICA)
+├── card_deck.py           # Quantum card and deck management
+├── models.py              # Database models
+└── requirements.txt       # Python dependencies
+```
 
-Proyecto desarrollado en el contexto UCM FISICA / CESGA. Personajes inspirados en figuras de la información e informática cuántica (Preskill, Cirac, Zoller, Deutsch).
+## Game Flow
+
+1. **Lobby Phase**
+   - Players create or join rooms
+   - Wait for 4 players
+   - Start game when ready
+
+2. **MUS Round**
+   - Players choose: MUS, PASO, ENVIDO, ORDAGO
+   - If all choose MUS: discard phase (simultaneous)
+   - New cards dealt, repeat
+   - When someone passes: move to GRANDE
+
+3. **GRANDE Round** (Higher cards win)
+   - Betting: PASO, ENVIDO, ORDAGO
+   - Team responses
+   - Card reveal and scoring
+
+4. **CHICA Round** (Lower cards win)
+   - Same betting mechanics
+
+5. **PARES & JUEGO Rounds**
+   - To be implemented
+
+6. **New Hand**
+   - After all rounds, new hand starts
+   - Mano rotates
+   - First to 40 points wins
+
+## Database Schema
+
+### Players
+- username, games_played, games_won, total_points
+
+### Games
+- room_id, game_mode, status, winner_team, scores
+
+### GameHistory
+- Events and actions during games
+
+## Configuration
+
+Edit `server.py` to configure:
+- Database URI
+- Secret key
+- CORS settings
+- Port number
+
+## Development
+
+Run in debug mode:
+```bash
+python server.py
+```
+
+The server will auto-reload on code changes.
+
+## Testing
+
+Test WebSocket connection:
+```javascript
+const socket = io('http://localhost:5000');
+
+socket.on('connect', () => {
+  console.log('Connected!');
+  
+  // Create a room
+  socket.emit('create_room', {
+    name: 'Test Room',
+    game_mode: '4'
+  });
+});
+```

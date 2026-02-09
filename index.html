@@ -5,10 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QuantuMus - 4 Player Card Game</title>
   <link rel="stylesheet" href="styles.css">
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-  <script src="config.override.js"></script>
-  <script src="config.js"></script>
-  <script src="assets/generate-cards.js"></script>
 </head>
 <body>
   <!-- ═══════════════════════════════════════════════════════════
@@ -74,7 +70,7 @@
     <div class="form-screen-content">
       <h2 class="form-title">Unirse a partida</h2>
       <p class="form-hint" id="join-player-name-hint"></p>
-      <input type="text" id="room-code-input" class="form-input form-input-code" placeholder="Código: 8 caracteres" maxlength="8">
+      <input type="text" id="room-code-input" class="form-input form-input-code" placeholder="Código: ABCD" maxlength="4">
       <div class="form-buttons">
         <button id="join-room-button" class="form-button" disabled>Unirse</button>
         <button id="back-to-mode-button" class="form-button secondary">Volver</button>
@@ -136,7 +132,10 @@
           <div id="players-list" class="players-list"></div>
           <button id="start-game-button" class="lobby-start-btn" style="display:none">INICIAR PARTIDA</button>
           <button id="demo-players-button" class="lobby-demo-btn" style="display:none">Demo: añadir jugadores de prueba</button>
-          <button id="leave-lobby-button" class="lobby-leave-btn">Salir</button>
+          <div class="lobby-buttons">
+            <button id="back-to-menu-button" class="lobby-back-btn">← Atrás</button>
+            <button id="leave-lobby-button" class="lobby-leave-btn">Salir</button>
+          </div>
         </div>
       </div>
     </div>
@@ -170,8 +169,9 @@
     </div>
   </div>
 
-  <script src="navigation.js"></script>
-  <script src="game.js"></script>
-  <!-- `` -->
+  <script src="/socket.io/socket.io.js" defer></script>
+  <script src="assets/generate-cards.js" defer></script>
+  <script src="navigation.js" defer></script>
+  <script src="game.js" defer></script>
 </body>
 </html>

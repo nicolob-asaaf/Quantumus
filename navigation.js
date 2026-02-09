@@ -4,167 +4,59 @@ document.addEventListener('DOMContentLoaded', () => {
   const gameState = {
     playerName: '',
     roomCode: '',
+    roomId: '',
     isHost: false,
     selectedCharacter: null,
     players: [],
     gameMode: '8', // '4' or '8' reyes (default to 8 to match HTML default)
-    onlineMode: false,
-    socket: null,
-    playerIndex: null,
-    roomId: null
+    socket: null // Socket.IO connection
   };
 
-  // Exponer estado para game.js
-  window.QuantumMusGameState = gameState;
-
-  // ==================== SOCKET.IO - MODO ONLINE ====================
-  function initSocket(callback) {
-    if (!window.io || !window.QuantumMusConfig || !QuantumMusConfig.isOnlineModeAvailable()) {
-      if (callback) callback(false);
-      return null;
-    }
-    const url = QuantumMusConfig.getServerUrl();
+  // Initialize Socket.IO
+  function initializeSocket() {
     if (gameState.socket && gameState.socket.connected) {
-      if (callback) callback(true);
-      return gameState.socket;
+      return; // Already connected
     }
-    try {
-      const socket = io(url, { transports: ['websocket', 'polling'], reconnection: true });
-      gameState.socket = socket;
-
-      socket.on('connect', () => {
-        gameState.onlineMode = true;
-        window.QuantumMusSocket = socket;
-        console.log('Conectado al servidor online');
-        if (callback) callback(true);
-      });
-
-      socket.on('connect_error', (err) => {
-        console.warn('No se pudo conectar al servidor:', err.message);
-        gameState.onlineMode = false;
-        if (callback) callback(false);
-      });
-
-      socket.on('room_created', (data) => {
-        if (data.success && data.room) {
-          gameState.roomId = data.room.id;
-          gameState.roomCode = data.room.id;
-          document.getElementById('room-code-value').textContent = gameState.roomCode;
-          socket.emit('join_room', {
-            room_id: data.room.id,
-            player_name: gameState.playerName,
-            character: gameState.selectedCharacter ? gameState.selectedCharacter.id : null
-          });
-        }
-      });
-
-      socket.on('joined_room', (data) => {
-        if (data.success) {
-          gameState.roomId = data.room_id;
-          gameState.playerIndex = data.player_index;
-          const room = data.room || {};
-          gameState.players = mapRoomPlayersToLocal(room.players || [], data.player_index === 0);
-          gameState.gameMode = room.game_mode || '8';
-          if (!gameState.roomCode) gameState.roomCode = data.room_id;
-          document.getElementById('room-code-value').textContent = gameState.roomCode;
-          updatePlayersList();
-          setupGameSettings();
-          updateStartButton();
-        } else {
-          alert(data.error || 'No se pudo unir a la sala');
-        }
-      });
-
-      socket.on('room_updated', (data) => {
-        if (data.room) {
-          const firstIsHost = (gameState.players[0] && gameState.players[0].name === gameState.playerName) ||
-            (data.room.players && data.room.players[0] && data.room.players[0].name === gameState.playerName);
-          gameState.players = mapRoomPlayersToLocal(data.room.players || [], firstIsHost);
-          updatePlayersList();
-          updateStartButton();
-        }
-      });
-
-      socket.on('left_room', () => {
-        gameState.roomId = null;
-        gameState.players = gameState.players.filter(p => p.name === gameState.playerName);
-      });
-
-      socket.on('game_started', (data) => {
-        if (data.game_state) {
-          window.dispatchEvent(new CustomEvent('onlineGameStarted', { detail: data }));
-        }
-      });
-
-      socket.on('game_error', (data) => {
-        alert(data.error || 'Error en el juego');
-      });
-
-      return socket;
-    } catch (e) {
-      console.warn('Socket.IO no disponible:', e);
-      if (callback) callback(false);
-      return null;
-    }
-  }
-
-  function mapRoomPlayersToLocal(roomPlayers, amHost) {
-    // Only allow valid characters (including new women)
-    const validCharacterIds = characters.map(c => c.id);
-    return roomPlayers
-      .filter(p => validCharacterIds.includes(p.character))
-      .map((p, i) => {
-        const char = characters.find(c => c.id === (p.character || ''));
-        return {
-          name: p.name,
-          character: p.character || null,
-          team: char ? char.team : null,
-          isReady: !!p.character,
-          isHost: i === 0
-        };
-      });
-  }
-
-  function emitCreateRoom() {
-    if (!gameState.socket || !gameState.socket.connected) return;
-    gameState.socket.emit('create_room', {
-      name: 'Quantum Room',
-      game_mode: gameState.gameMode
+    
+    gameState.socket = io();
+    
+    // Socket.IO event listeners
+    gameState.socket.on('connect', () => {
+      console.log('Connected to server');
     });
-  }
-
-  function emitJoinRoom() {
-    if (!gameState.socket || !gameState.socket.connected) return;
-    const code = (gameState.roomCode || '').trim().toLowerCase();
-    if (!code) return;
-    gameState.socket.emit('join_room', {
-      room_id: code,
-      player_name: gameState.playerName,
-      character: gameState.selectedCharacter ? gameState.selectedCharacter.id : null
+    
+    gameState.socket.on('room_updated', (data) => {
+      console.log('Room updated:', data);
+      if (data && data.room) {
+        gameState.players = data.room.players || [];
+        updatePlayersList();
+        
+        // Also refresh character selection grid to show updated "elegido" status
+        createCharacterSelection();
+      }
     });
-  }
-
-  function emitLeaveRoom() {
-    if (gameState.socket && gameState.socket.connected && gameState.roomId) {
-      gameState.socket.emit('leave_room', { room_id: gameState.roomId });
-    }
-  }
-
-  function emitStartGame() {
-    if (gameState.socket && gameState.socket.connected && gameState.roomId) {
-      gameState.socket.emit('start_game', { room_id: gameState.roomId });
-    }
-  }
-
-  function emitCharacterSelection(charId) {
-    if (gameState.socket && gameState.socket.connected && gameState.roomId) {
-      gameState.socket.emit('set_character', {
-        room_id: gameState.roomId,
-        character: charId
-      });
-      // Force update of character grid to show 'Elegido' immediately
-      setTimeout(() => { createCharacterSelection(); }, 100);
-    }
+    
+    gameState.socket.on('joined_room', (data) => {
+      console.log('Joined room:', data);
+      if (data.success) {
+        gameState.roomId = data.room_id;
+        // Room data is in room_updated event
+      }
+    });
+    
+    gameState.socket.on('game_error', (data) => {
+      console.error('Game error:', data.error);
+      alert('Error: ' + data.error);
+      
+      // If it's a character selection error, refresh the character grid to show current state
+      if (data.error && data.error.includes('character')) {
+        createCharacterSelection();
+      }
+    });
+    
+    gameState.socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+    });
   }
 
   // Character data organized by teams
@@ -174,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
       name: 'Preskill',
       color: '#2ec4b6',
       specialty: 'Corrección de Errores',
-      description: 'Experto en proteger la información cuántica',
+      description: '<strong>John Preskill (1961-presente)</strong><br><br>Pionero teórico en información cuántica e informática cuántica. Preskill es el Profesor Richard P. Feynman de Física Teórica en Caltech y una autoridad destacada en corrección de errores cuánticos y el camino hacia computadoras cuánticas prácticas.<br><br><strong>Símbolo de la Carta:</strong> El código de corrección de errores (círculos anidados) representa códigos de corrección de errores cuánticos - mecanismos esenciales que protegen la información cuántica de la decoherencia y el ruido ambiental, haciendo posibles computadoras cuánticas confiables.<br><br><strong>Contribución:</strong> Desarrolló marcos fundamentales para corrección de errores cuánticos, estableció el concepto de era "NISQ" (Noisy Intermediate-Scale Quantum), y continúa guiando la realización práctica de computadoras cuánticas en el mundo real.',
       team: 1
     },
     {
@@ -182,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
       name: 'Zoller',
       color: '#a78bfa',
       specialty: 'Redes Cuánticas',
-      description: 'Pionero en comunicación cuántica',
+      description: '<strong>Peter Zoller (1952-presente)</strong><br><br>Distinguido físico cuántico especializado en computación cuántica con iones atrapados. Zoller desarrolló protocolos detallados para manipular y medir estados cuánticos usando iones enfriados por láser.<br><br><strong>Símbolo de la Carta:</strong> La celosía cuántica (puntos interconectados) representa la disposición geométrica de iones atrapados en una computadora cuántica, mostrando cómo los bits cuánticos individuales se comunican e se enredan entre sí.<br><br><strong>Contribución:</strong> Sus protocolos transformaron sistemas de iones atrapados en computadoras cuánticas prácticas, proporcionando instrucciones paso a paso para operaciones de puertas cuánticas que se implementan en el hardware cuántico actual.',
       team: 1
     },
     {
@@ -190,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
       name: 'Cirac',
       color: '#ff9e6d',
       specialty: 'Trampas de Iones',
-      description: 'Maestro de la computación con iones atrapados',
+      description: '<strong>Ignacio Cirac (1965-presente)</strong><br><br>Científico de información cuántica líder que revolucionó la teoría de la informática cuántica. Cirac es reconocido por desarrollar protocolos de simulación cuántica y demostrar cómo construir computadoras cuánticas usando iones atrapados.<br><br><strong>Símbolo de la Carta:</strong> La representación de trampa de iones (tres puntos dispuestos en un patrón) simboliza iones atrapados dispuestos en una configuración lineal - los componentes fundamentales para la computación cuántica en su enfoque.<br><br><strong>Contribución:</strong> Su trabajo sobre entrelazamiento cuántico y sistemas de muchos cuerpos creó el fundamento teórico para computadoras y simuladores cuánticos modernos.',
       team: 2
     },
     {
@@ -198,46 +90,42 @@ document.addEventListener('DOMContentLoaded', () => {
       name: 'Deutsch',
       color: '#f5c518',
       specialty: 'Algoritmos Cuánticos',
-      description: 'Creador del algoritmo Deutsch-Jozsa',
+      description: '<strong>David Deutsch (1953-presente)</strong><br><br>Fundador de la teoría de la computación cuántica - el primero en reconocer que las computadoras cuánticas podrían resolver problemas exponencialmente más rápido que las computadoras clásicas. Su trabajo revolucionario estableció algoritmos cuánticos como un nuevo paradigma computacional.<br><br><strong>Símbolo de la Carta:</strong> La representación de circuito cuántico (caja con círculo y punto) simboliza una puerta cuántica - las operaciones computacionales fundamentales que manipulan bits cuánticos y forman la base de algoritmos cuánticos.<br><br><strong>Contribución:</strong> Probó que el principio Church-Turing se extiende a la mecánica cuántica y creó el algoritmo de Deutsch, el primer algoritmo cuántico que demuestra ventaja computacional sobre métodos clásicos.',
+      team: 2
+    },
+    {
+      id: 'simmons',
+      name: 'Simmons',
+      color: '#ff66c4',
+      specialty: 'Computación Atómica',
+      description: '<strong>Michelle Simmons (1967-presente)</strong><br><br>Física australiana pionera en computación cuántica a escala atómica. Simmons es directora del Centro de Excelencia en Tecnologías Cuánticas de Australia y ha revolucionado la forma en que construimos dispositivos cuánticos usando silicio. Su trabajo utiliza microscopía de efecto túnel escanificado para posicionar átomos individuales de fósforo en silicio, creando transistores de un solo átomo y sistemas cuánticos de precisión extrema.<br><br><strong>Símbolo de la Carta:</strong> El átomo de fósforo puntualmente posicionado en una red de silicio representa la precisión extraordinaria del enfoque de Simmons en ingeniería cuántica a escala atómica.<br><br><strong>Contribución:</strong> Creó el primer transistor de un solo átomo y demostró que los sistemas de silicio pueden mantener coherencia cuántica lo suficientemente larga como para computación práctica.',
+      team: 1
+    },
+    {
+      id: 'broadbent',
+      name: 'Broadbent',
+      color: '#2ecc71',
+      specialty: 'Criptografía Cuántica',
+      description: '<strong>Anne Broadbent (1978-presente)</strong><br><br>Destacada criptógrafa cuántica y teórica de información cuántica. Broadbent ha realizado contribuciones fundamentales a la criptografía cuántica y especialmente a la computación cuántica delegada. Su trabajo combina rigor matemático con aplicaciones prácticas en seguridad cuántica.<br><br><strong>Símbolo de la Carta:</strong> El símbolo de candado con seguridad representa el enfoque de Broadbent en proteger y verificar la integridad de información cuántica.<br><br><strong>Contribución:</strong> Desarrolló protocolos revolucionarios para computación cuántica delegada que permiten verificar resultados de computadoras cuánticas sin poseer una propia.',
+      team: 2
+    },
+    {
+      id: 'martinis',
+      name: 'Yunger Halpern',
+      color: '#ffb347',
+      specialty: 'Termodinámica Cuántica',
+      description: '<strong>Nicole Yunger Halpern (1987-presente)</strong><br><br>Física teórica innovadora especializada en termodinámica cuántica y conexiones entre mecánica cuántica y fenómenos del mundo real observable. Yunger Halpern trabaja en NIST y es conocida por su creatividad en conectar conceptos cuánticos esotéricos con aplicaciones prácticas.<br><br><strong>Símbolo de la Carta:</strong> El símbolo de engranaje steampunk representa la combinación ingeniosa de Yunger Halpern de ideas antiguas de la física con nuevas perspectivas cuánticas.<br><br><strong>Contribución:</strong> Reveló conexiones profundas entre entrelazamiento cuántico y fenómenos termodinámicos, mostrando cómo sistemas cuánticos pueden desafiar intuiciones clásicas.',
+      team: 1
+    },
+    {
+      id: 'monroe',
+      name: 'Hallberg',
+      color: '#5f9ea0',
+      specialty: 'Materiales Cuánticos',
+      description: '<strong>Karen Hallberg (1960-presente)</strong><br><br>Eminente física teórica argentina especializada en sistemas cuánticos fuertemente correlacionados y métodos computacionales. Hallberg es investigadora principal en el Centro Atómico Bariloche y ha desarrollado técnicas sofisticadas para entender sistemas cuánticos complejos.<br><br><strong>Símbolo de la Carta:</strong> Los símbolos de estructura molecular interconectada representan el enfoque de Hallberg en entender cómo los átomos se combinan para crear comportamientos cuánticos colectivos.<br><br><strong>Contribución:</strong> Desarrolló métodos numéricos innovadores para simular sistemas cuánticos intratables computacionalmente, permitiendo la predicción de propiedades de nuevos materiales cuánticos.',
       team: 2
     }
   ];
-
-  // Additional characters (female scientists) available in lobby
-  characters.push({
-    id: 'simmons',
-    name: 'Simmons',
-    color: '#ff66c4',
-    specialty: 'Fabricación a escala atómica',
-    description: 'Líder en la fabricación de hardware cuántico en silicio',
-    team: 2
-  });
-  characters.push({
-    id: 'broadbent',
-    name: 'Broadbent',
-    color: '#2ecc71',
-    specialty: 'Fundamentos de la seguridad cuántica',
-    description: 'Investigadora en teoría de la computación y criptografía cuántica',
-    team: 1
-  });
-  // Substitute Wiesner and Benioff with important women in quantum computing
-  // Substitutes: Women leaders in quantum computing
-  characters.push({
-    id: 'martinis',
-    name: 'Nicole Yunger Halpern',
-    color: '#ffb347', // orange
-    specialty: 'Teoría de la información cuántica',
-    description: 'Nicole Yunger Halpern: Física teórica y divulgadora, pionera en termodinámica cuántica y autora de "Quantum Steampunk". Su trabajo conecta la información cuántica con la física clásica y la computación.',
-    team: 1
-  });
-  characters.push({
-    id: 'monroe',
-    name: 'Karen Hallberg',
-    color: '#5f9ea0', // cadet blue
-    specialty: 'Óptica cuántica y computación',
-    description: 'Karen Hallberg: Física argentina reconocida internacionalmente por sus contribuciones a la materia condensada y la computación cuántica. Defensora de la participación de mujeres en la ciencia.',
-    team: 2
-  });
 
   // Screen management
   const screens = {
@@ -471,17 +359,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   hostButton.addEventListener('click', () => {
     gameState.isHost = true;
-    initSocket((connected) => {
-      if (connected) {
-        emitCreateRoom();
-        initializeLobby();
-        showScreen('lobby');
-      } else {
-        gameState.roomCode = generateRoomCode();
-        initializeLobby();
-        showScreen('lobby');
-      }
-    });
+    gameState.roomCode = generateRoomCode();
+    initializeLobby();
+    showScreen('lobby');
   });
 
   joinButton.addEventListener('click', () => {
@@ -504,13 +384,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const joinPlayerNameHint = document.getElementById('join-player-name-hint');
 
   function updateJoinButtonState() {
-    const codeOk = roomCodeInput && roomCodeInput.value.length >= 4 && roomCodeInput.value.length <= 8;
+    const codeOk = roomCodeInput && roomCodeInput.value.length === 4;
     if (joinRoomButton) joinRoomButton.disabled = !codeOk;
   }
 
   if (roomCodeInput) {
     roomCodeInput.addEventListener('input', (e) => {
-      e.target.value = e.target.value.replace(/[^A-Za-z0-9]/g, '');
+      e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
       updateJoinButtonState();
     });
     roomCodeInput.addEventListener('keypress', (e) => {
@@ -522,16 +402,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (joinRoomButton) {
     joinRoomButton.addEventListener('click', () => {
-      gameState.roomCode = (roomCodeInput.value || '').trim().toLowerCase();
-      initSocket((connected) => {
-        if (connected) {
-          emitJoinRoom();
-          initializeLobby();
-          showScreen('lobby');
-        } else {
-          alert('No se pudo conectar al servidor. Comprueba que el servidor esté en ejecución.');
-        }
-      });
+      const roomCode = roomCodeInput.value.toUpperCase();
+      gameState.roomCode = roomCode;
+      
+      // Initialize Socket.IO if not already done
+      if (!gameState.socket) {
+        initializeSocket();
+      }
+      
+      // Join room by code
+      if (gameState.socket) {
+        gameState.socket.emit('join_room_by_code', {
+          room_code: roomCode,
+          player_name: gameState.playerName
+        });
+        
+        gameState.socket.once('joined_room', (data) => {
+          if (data.success) {
+            gameState.roomId = data.room_id;
+            initializeLobby();
+            showScreen('lobby');
+          } else {
+            alert('Error joining room: ' + data.error);
+          }
+        });
+      }
     });
   }
 
@@ -546,8 +441,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // LOBBY SCREEN
   // ============================================================
   function initializeLobby() {
-    // Display room code
-    document.getElementById('room-code-value').textContent = gameState.roomCode;
+    // Initialize Socket.IO connection if not already done
+    if (!gameState.socket) {
+      initializeSocket();
+    }
+
+    // Display room code (will be updated when we get room_created response)
+    document.getElementById('room-code-value').textContent = gameState.roomCode || 'Conectando...';
 
     // Setup game settings panel
     setupGameSettings();
@@ -564,8 +464,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }];
     updatePlayersList();
 
+    // If host, create room on server; if joining, this is handled in join_room event
+    if (gameState.isHost && gameState.socket && !gameState.roomId) {
+      gameState.socket.emit('create_room', {
+        name: `Room_${Date.now()}`,
+        game_mode: gameState.gameMode
+      });
+      
+      gameState.socket.once('room_created', (data) => {
+        if (data.success) {
+          gameState.roomId = data.room.id;
+          gameState.roomCode = data.room.code; // Use server-generated code
+          document.getElementById('room-code-value').textContent = gameState.roomCode;
+          
+          // Join the room we just created
+          gameState.socket.emit('join_room', {
+            room_id: gameState.roomId,
+            player_name: gameState.playerName,
+            character: null
+          });
+        } else {
+          alert('Error creating room: ' + (data.error || 'Unknown error'));
+        }
+      });
+    }
+
     // Setup buttons
     const startGameButton = document.getElementById('start-game-button');
+    const backToMenuButton = document.getElementById('back-to-menu-button');
     const leaveLobbyButton = document.getElementById('leave-lobby-button');
 
     if (gameState.isHost) {
@@ -576,8 +502,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Use onclick to avoid duplicate listeners when initializeLobby is called multiple times
     startGameButton.onclick = startGame;
+    
+    backToMenuButton.onclick = () => {
+      // Leave room on server if connected
+      if (gameState.socket && gameState.roomId) {
+        gameState.socket.emit('leave_room', {
+          room_id: gameState.roomId
+        });
+      }
+      showScreen('menu');
+      resetGameState();
+    };
+    
     leaveLobbyButton.onclick = () => {
-      emitLeaveRoom();
+      // Leave room on server if connected
+      if (gameState.socket && gameState.roomId) {
+        gameState.socket.emit('leave_room', {
+          room_id: gameState.roomId
+        });
+      }
       showScreen('menu');
       resetGameState();
     };
@@ -605,9 +548,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         updatePlayersList();
         updateStartButton();
-        // Mark that this room is running in demo/local mode so startGame
-        // initializes locally instead of emitting to the server.
-        gameState.demoMode = true;
         demoBtn.style.display = 'none';
       });
     }
@@ -674,52 +614,76 @@ document.addEventListener('DOMContentLoaded', () => {
     team1Grid.innerHTML = '';
     team2Grid.innerHTML = '';
 
-    // Personajes ya elegidos por otros jugadores (no por el actual)
+    // Get all taken characters (by ANY player, including the current one)
+    const takenCharacters = gameState.players
+      .filter(p => p.character)
+      .map(p => p.character);
+
+    // Get characters taken by OTHER players only (for "elegido" label)
     const takenByOthers = gameState.players
       .filter(p => p.name !== gameState.playerName && p.character)
       .map(p => p.character);
 
-    // Count how many players already selected characters from each team
-    const teamCounts = { 1: 0, 2: 0 };
-    gameState.players.forEach(p => {
-      if (p.team === 1) teamCounts[1]++;
-      if (p.team === 2) teamCounts[2]++;
-    });
+    // Count selected players per team
+    const team1Selected = gameState.players.filter(p => {
+      const char = characters.find(c => c.id === p.character);
+      return char && char.team === 1;
+    }).length;
+    
+    const team2Selected = gameState.players.filter(p => {
+      const char = characters.find(c => c.id === p.character);
+      return char && char.team === 2;
+    }).length;
 
     characters.forEach(char => {
-      // Determine if this character is the current player's selection.
-      const sel = gameState.selectedCharacter;
-      const isMySelection = sel && (typeof sel === 'string' ? sel === char.id : (sel.id === char.id));
-      // Mark as taken if character already chosen by others or the team
-      // already has 2 players selected (prevent choosing >2 from same team).
-      const isTaken = takenByOthers.includes(char.id) || (teamCounts[char.team] >= 2 && !isMySelection && !takenByOthers.includes(char.id));
-
-      const charCard = document.createElement('div');
-      charCard.className = 'character-card' + (isTaken ? ' taken' : '') + (isMySelection ? ' selected' : '');
-      charCard.dataset.characterId = char.id;
-      
-      charCard.innerHTML = `
-        <div class="character-portrait-wrapper">
-          ${CardGenerator.generateCharacter(char.name)}
-        </div>
-        <div class="character-info">
-          <h4 class="character-name" style="color: ${char.color}">${char.name}</h4>
-          <p class="character-specialty">${char.specialty}</p>
-          <p class="character-description">${char.description}</p>
-        </div>
-        ${isTaken ? '<div class="character-taken-label">Elegido</div>' : ''}
-        <div class="character-selected-indicator">✓</div>
-      `;
+        // Character is taken if ANY player (including me) has selected it
+        const isTaken = takenCharacters.includes(char.id);
+        
+        // Show "elegido" if:
+        // 1. Another player selected it, OR
+        // 2. The team has 2+ players selected (team is full)
+        const isTeamFull = (char.team === 1 && team1Selected >= 2) || (char.team === 2 && team2Selected >= 2);
+        const shouldShowElegido = takenByOthers.includes(char.id) || isTeamFull;
+        
+        // Is this my selection?
+        const isMySelection = gameState.selectedCharacter && gameState.selectedCharacter.id === char.id;
+        
+        const charCard = document.createElement('div');
+        charCard.className = 'character-card';
+        if (isTaken) charCard.classList.add('taken');
+        if (isMySelection) charCard.classList.add('selected');
+        charCard.classList.add(`character-id-${char.id}`);
+        charCard.dataset.characterId = char.id;
+        
+        // Extract just the brief description
+        const descParts = char.description.split('<br><br>');
+        const briefDesc = descParts[0] ? descParts[0].replace(/<[^>]*>/g, '') : '';
+        
+        charCard.innerHTML = `
+          <div class="character-portrait-wrapper">
+            ${CardGenerator.generateCharacter(char.id)}
+          </div>
+          <div class="character-info">
+            <h4 class="character-name" style="color: ${char.color}">${char.name}</h4>
+            <p class="character-specialty">${char.specialty}</p>
+            <p class="character-description">${briefDesc || char.specialty}</p>
+          </div>
+          ${shouldShowElegido ? '<div class="character-taken-label">Elegido</div>' : ''}
+          <div class="character-selected-indicator">✓</div>
+        `;
 
       charCard.addEventListener('click', () => {
-        if (charCard.classList.contains('taken')) return;
+        // Prevent selecting if character is taken by someone else
+        if (isTaken && !isMySelection) {
+          console.log(`Character ${char.id} is already taken`);
+          return;
+        }
         
-        // Toggle selection - unselect if already selected
+        // Toggle selection - unselect if I already selected it
         if (isMySelection) {
           unselectCharacter();
         } else {
           selectCharacter(char, charCard);
-          if (gameState.onlineMode) emitCharacterSelection(char.id);
         }
       });
       
@@ -733,18 +697,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function selectCharacter(character, cardElement) {
-    // No elegir si ya lo tiene otro jugador
+    // Check if character is already taken by another player
     const takenByOthers = gameState.players
       .filter(p => p.name !== gameState.playerName && p.character)
       .map(p => p.character);
-    if (takenByOthers.includes(character.id)) return;
-
-    // Prevent selecting a character from a team that already has two players
-    const teamCounts = { 1: 0, 2: 0 };
-    gameState.players.forEach(p => { if (p.team === 1) teamCounts[1]++; if (p.team === 2) teamCounts[2]++; });
-    if (teamCounts[character.team] >= 2) {
-      // Do not allow selection; silently ignore or show brief feedback
-      alert('No se pueden elegir más jugadores de ese equipo.');
+    
+    if (takenByOthers.includes(character.id)) {
+      console.log(`Cannot select ${character.id} - already taken by another player`);
+      alert(`${character.name} ya ha sido elegido por otro jugador`);
       return;
     }
 
@@ -764,6 +724,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     updateStartButton();
+
+    // Emit character selection to server if we have a socket connection
+    if (gameState.socket && gameState.roomId) {
+      gameState.socket.emit('set_character', {
+        room_id: gameState.roomId,
+        character: character.id
+      });
+    }
   }
 
   function unselectCharacter() {
@@ -778,11 +746,18 @@ document.addEventListener('DOMContentLoaded', () => {
       currentPlayer.character = null;
       currentPlayer.team = null;
       currentPlayer.isReady = false;
-      if (gameState.onlineMode) emitCharacterSelection(null);
       updatePlayersList();
     }
 
     updateStartButton();
+
+    // Emit character deselection to server if we have a socket connection
+    if (gameState.socket && gameState.roomId) {
+      gameState.socket.emit('set_character', {
+        room_id: gameState.roomId,
+        character: null
+      });
+    }
   }
 
   function updatePlayersList() {
@@ -799,9 +774,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (player.character) {
         const char = characters.find(c => c.id === player.character);
         playerItem.innerHTML = `
-            <div class="player-avatar" style="border-color: ${char.color}">
-              ${CardGenerator.generateCharacter(char.name)}
+          <div class="player-avatar" style="border-color: ${char.color}; position: relative;">
+            ${CardGenerator.generateCharacter(char.name)}
+            <div style="color: ${char.color}; background: rgba(0,0,0,0.5); position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 2rem; font-weight: bold; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; border-radius: 8px; z-index: 10;">
+              ${char.name.charAt(0).toUpperCase()}
             </div>
+          </div>
           <div class="player-info">
             <span class="player-name">${player.name}</span>
             ${player.isHost ? '<span class="host-badge">HOST</span>' : ''}
@@ -873,45 +851,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function startGame() {
+    // Reset game initialization flag before starting
     window.gameInitialized = false;
-    
-    // If demo/local mode was activated, always start locally even if socket is connected
-    if (!gameState.demoMode && gameState.onlineMode && gameState.socket && gameState.socket.connected) {
-      emitStartGame();
-      // La pantalla de juego se mostrará cuando llegue onlineGameStarted
-    } else {
-      const localIndex = gameState.players.findIndex(p => p.name === gameState.playerName);
-      const safeIndex = localIndex >= 0 ? localIndex : 0;
-      initializeGame(gameState.gameMode, gameState.players, safeIndex);
-      showScreen('game');
-    }
-  }
 
-  window.addEventListener('onlineGameStarted', (e) => {
-    const detail = e.detail || {};
-    const localIndex = gameState.playerIndex != null ? gameState.playerIndex : 0;
-    window.currentGameMode = gameState.gameMode;
-    window.currentPlayers = gameState.players;
-    window.currentLocalPlayerIndex = localIndex;
-    window.onlineMode = true;
-    window.roomId = gameState.roomId;
-    window.initialServerState = detail.game_state || {};
-    console.log('[ONLINE] onlineGameStarted event received:', {
-      gameMode: window.currentGameMode,
-      players: window.currentPlayers,
-      localIndex,
-      roomId: window.roomId,
-      initialServerState: window.initialServerState
-    });
+    // Record client timestamp to measure initialization latency
+    try {
+      window._create_start_ts = performance.now();
+      console.log('[client] startGame clicked, timestamp set');
+    } catch (e) {
+      window._create_start_ts = Date.now();
+    }
+
+    // Find local player index (from character selection)
+    const localIndex = gameState.players.findIndex(p => p.name === gameState.playerName);
+    const safeIndex = localIndex >= 0 ? localIndex : 0;
+    initializeGame(gameState.gameMode, gameState.players, safeIndex);
     showScreen('game');
-    setTimeout(() => {
-      const gameScreen = document.getElementById('game-screen');
-      if (!gameScreen.classList.contains('active')) {
-        alert('Error: No se pudo avanzar a la pantalla de juego. Por favor, recarga la página o revisa la consola para más detalles.');
-        console.error('[ONLINE] Error: game-screen did not become active after onlineGameStarted.');
-      }
-    }, 1000);
-  });
+  }
 
   // ============================================================
   // LEAVE GAME BUTTON
@@ -1127,10 +1083,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // UTILITY FUNCTIONS
   // ============================================================
   function generateRoomCode() {
-    // El código real viene del servidor al crear sala online
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let code = '';
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 4; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return code;

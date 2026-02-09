@@ -7,7 +7,7 @@ A complete round management system has been implemented for the Quantum Mus game
 A comprehensive `gameState` object tracks:
 - **Current Round**: MUS, GRANDE, CHICA, PARES, JUEGO
 - **Player Positions**: Mano (starting player) and active player
-- **Team Management**: Two teams (Copenhague vs Muchos Mundos)
+- **Team Management**: Two teams (Copenhague vs Bohmian)
 - **Betting System**: Current bets, betting team, responses
 - **Round Actions**: What each player has done
 - **Discard Phase**: Which cards were discarded
