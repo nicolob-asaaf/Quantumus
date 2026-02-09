@@ -66,8 +66,8 @@ class RoomManager:
             if room['status'] == 'waiting' and len(room['players']) < room['max_players']
         ]
     
-    def add_player(self, room_id, socket_id, player_name, character):
-        """Add a player to a room"""
+    def add_player(self, room_id, socket_id, player_name, character=None):
+        """Add a player to a room. character puede ser None si aún no ha elegido."""
         room = self.rooms.get(room_id)
         
         if not room:
@@ -79,7 +79,7 @@ class RoomManager:
         if room['status'] != 'waiting':
             return {'success': False, 'error': 'Game already in progress'}
         
-        # Check if player already in room
+        # Si ya está en la sala, no permitir join de nuevo (usar set_character)
         if any(p['socket_id'] == socket_id for p in room['players']):
             return {'success': False, 'error': 'Already in room'}
         
@@ -89,7 +89,7 @@ class RoomManager:
             'name': player_name,
             'character': character,
             'index': player_index,
-            'ready': False
+            'ready': bool(character)
         }
         
         room['players'].append(player)
@@ -129,6 +129,17 @@ class RoomManager:
     def get_player_room(self, socket_id):
         """Get room ID for a player"""
         return self.player_rooms.get(socket_id)
+
+    def set_player_character(self, room_id, socket_id, character):
+        """Update character for a player already in the room"""
+        room = self.rooms.get(room_id)
+        if not room:
+            return False
+        for player in room['players']:
+            if player['socket_id'] == socket_id:
+                player['character'] = character
+                return True
+        return False
     
     def set_room_status(self, room_id, status):
         """Update room status"""

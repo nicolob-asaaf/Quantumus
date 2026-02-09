@@ -287,7 +287,7 @@ A (As) < 4 < 5 < 6 < 7 < J < Q < K
 
 ### Team Structure
 - **Team 1 (Copenhague)**: Players 0, 2
-- **Team 2 (Bohmian)**: Players 1, 3
+- **Team 2 (Muchos Mundos)**: Players 1, 3
 - **Mano**: Rotates clockwise each hand
 
 ## Troubleshooting

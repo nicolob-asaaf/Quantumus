@@ -3,29 +3,63 @@ Quantum Mus - Backend Server
 Flask + Socket.IO for real-time multiplayer game
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import logging
+import os
 from datetime import datetime
+import time
+
+# Prefer eventlet for better WebSocket support and lower latency under limited CPU
+try:
+    import eventlet
+    eventlet.monkey_patch()
+except Exception:
+    eventlet = None
+
+# Directorio del frontend (padre del backend) para servir archivos estáticos
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+# CORS: orígenes permitidos
+# En producción (Render), especificar ALLOWED_ORIGINS con dominios explícitos
+# En desarrollo, usar * para pruebas locales
+def _get_cors_origins():
+    allowed = os.environ.get('ALLOWED_ORIGINS', '').strip()
+    frontend_url = os.environ.get('FRONTEND_URL', '').strip()
+    frontend_origin = os.environ.get('FRONTEND_ORIGIN', '').strip()
+
+    if allowed:
+        # Usar lista explícita si se proporciona
+        return [o.strip() for o in allowed.split(',') if o.strip()]
+
+    extra_origins = [o for o in [frontend_url, frontend_origin] if o]
+
+    # Detectar si está en producción (Render establece esta variable)
+    if os.environ.get('RENDER') == 'true':
+        # En Render: permitir solo el dominio de producción y el frontend explícito
+        render_domain = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')
+        origins = []
+        if render_domain:
+            origins.extend([f'https://{render_domain}', f'https://www.{render_domain}'])
+        origins.extend(extra_origins)
+        if origins:
+            return origins
+        # Fallback seguro si no hay dominio configurado
+        return ['https://localhost']
+
+    # En desarrollo local, permitir todos los orígenes
+    return '*'
+
+CORS_ORIGINS = _get_cors_origins()
 
 # Import game modules
 from game_manager import GameManager
 from room_manager import RoomManager
 from models import db, Game, Player, GameHistory
+from Logica_cuantica.baraja import QuantumDeck
 
-# Valid characters - all 8 scientists
-VALID_CHARACTERS = {
-    'preskill': 'Preskill',
-    'zoller': 'Zoller',
-    'cirac': 'Cirac',
-    'deutsch': 'Deutsch',
-    'simmons': 'Simmons',
-    'broadbent': 'Broadbent',
-    'martinis': 'Nicole Yunger Halpern',
-    'monroe': 'Karen Hallberg'
-}
-
+# Configure
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,11 +70,22 @@ app.config['SECRET_KEY'] = 'quantum-mus-secret-2026'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quantum_mus.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Enable CORS
-CORS(app, resources={r"/*": {"origins": "*"}})
+# Enable CORS (Flask HTTP) usando ALLOWED_ORIGINS
+CORS(app, resources={r"/*": {"origins": CORS_ORIGINS}})
 
-# Initialize Socket.IO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+# Initialize Socket.IO (WebSocket) con optimizaciones para Render
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins=CORS_ORIGINS,
+    async_mode='eventlet' if eventlet else 'threading',
+    ping_timeout=120,  # Aumentar timeout a 2 minutos
+    ping_interval=30,  # Enviar ping cada 30 segundos
+    max_http_buffer_size=1e6,  # 1MB buffer para mensajes
+    engineio_logger=False,  # Desactivar logs verbose de engineio en producción
+    #logger=False,  # Desactivar logs verbose de socketio en producción
+    allow_upgrades=True,  # Permitir upgrades de polling a WebSocket
+    transports=['websocket', 'http_long_polling']  # WebSocket primero, fallback a polling
+)
 
 # Initialize database
 db.init_app(app)
@@ -54,6 +99,17 @@ with app.app_context():
     db.create_all()
     logger.info("Database initialized")
 
+# Valid characters for the game
+VALID_CHARACTERS = {
+    'preskill': 'John Preskill',
+    'zoller': 'Peter Zoller',
+    'cirac': 'Ignacio Cirac',
+    'deutsch': 'David Deutsch',
+    'simmons': 'Matthew Simmons',
+    'broadbent': 'Anne Broadbent',
+    'martinis': 'Nicole Yunger Halpern',
+    'monroe': 'Karen Hallberg'
+}
 
 # ==================== HTTP ENDPOINTS ====================
 
@@ -80,12 +136,19 @@ def create_room():
     room_name = data.get('name', 'Quantum Room')
     game_mode = data.get('game_mode', '4')
     max_players = 4
-    
+    # Instrumentation: measure server processing time for room creation
+    recv_ts = time.time()
     room = room_manager.create_room(room_name, game_mode, max_players)
-    
+    send_ts = time.time()
+    processing_ms = int((send_ts - recv_ts) * 1000)
+
+    logger.info(f"POST /api/rooms processed in {processing_ms}ms - room {room['id']}")
+
     return jsonify({
         'success': True,
-        'room': room
+        'room': room,
+        'server_ts': datetime.utcnow().isoformat(),
+        'processing_ms': processing_ms
     }), 201
 
 @app.route('/api/stats', methods=['GET'])
@@ -101,7 +164,30 @@ def get_stats():
     })
 
 
+# ==================== FRONTEND ESTÁTICO ====================
+@app.route('/')
+def serve_index():
+    """Sirve la página principal del juego"""
+    return send_from_directory(FRONTEND_DIR, 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Sirve archivos estáticos (js, css, assets). Debe ir al final."""
+    if filename.startswith('api/') or filename == 'health':
+        return jsonify({'error': 'Not found'}), 404
+    filepath = os.path.join(FRONTEND_DIR, filename)
+    if os.path.isfile(filepath):
+        return send_from_directory(FRONTEND_DIR, filename)
+    return send_from_directory(FRONTEND_DIR, 'index.html')
+
+
 # ==================== WEBSOCKET EVENTS ====================
+
+@socketio.on_error_default
+def default_error_handler(e):
+    """Global error handler for Socket.IO"""
+    logger.error(f"Socket.IO error: {e}", exc_info=True)
+    emit('socket_error', {'error': str(e)})
 
 @socketio.on('connect')
 def handle_connect():
@@ -114,22 +200,43 @@ def handle_disconnect():
     """Handle client disconnection"""
     logger.info(f"Client disconnected: {request.sid}")
     
-    # Remove player from any rooms/games
-    room_id = room_manager.get_player_room(request.sid)
-    if room_id:
-        handle_leave_room({'room_id': room_id})
+    try:
+        # Remove player from any rooms/games
+        room_id = room_manager.get_player_room(request.sid)
+        if room_id:
+            # Don't use leave_room() during disconnect - socket is already closing
+            # Just clean up the room manager directly
+            room_manager.remove_player(room_id, request.sid)
+            
+            # Notify remaining players of room update
+            remaining_room = room_manager.get_room(room_id)
+            if remaining_room:
+                socketio.emit('room_updated', {
+                    'room': remaining_room
+                }, room=room_id)
+    except Exception as e:
+        logger.error(f"Error during disconnect cleanup for {request.sid}: {e}")
 
 @socketio.on('create_room')
 def handle_create_room(data):
     """Create a new game room"""
+    # Instrumentation: measure server-side receive -> response time
+    recv_ts = time.time()
     room_name = data.get('name', 'Quantum Room')
     game_mode = data.get('game_mode', '4')
-    
+
     room = room_manager.create_room(room_name, game_mode, 4)
-    
+
+    send_ts = time.time()
+    processing_ms = int((send_ts - recv_ts) * 1000)
+
+    logger.info(f"Socket create_room processed in {processing_ms}ms - room {room['id']}")
+
     emit('room_created', {
         'success': True,
-        'room': room
+        'room': room,
+        'server_ts': datetime.utcnow().isoformat(),
+        'processing_ms': processing_ms
     })
 
 @socketio.on('join_room')
@@ -246,16 +353,23 @@ def handle_leave_room(data):
     """Leave a game room"""
     room_id = data.get('room_id')
     
-    if room_manager.remove_player(room_id, request.sid):
-        leave_room(room_id)
-        
-        # Notify player
-        emit('left_room', {'success': True})
-        
-        # Notify remaining players
-        socketio.emit('room_updated', {
-            'room': room_manager.get_room(room_id)
-        }, room=room_id)
+    try:
+        if room_manager.remove_player(room_id, request.sid):
+            try:
+                leave_room(room_id)
+            except Exception as e:
+                logger.warning(f"Could not leave room {room_id}: {e}")
+            
+            # Notify player
+            emit('left_room', {'success': True})
+            
+            # Notify remaining players
+            socketio.emit('room_updated', {
+                'room': room_manager.get_room(room_id)
+            }, room=room_id)
+    except Exception as e:
+        logger.error(f"Error leaving room {room_id}: {e}", exc_info=True)
+        emit('game_error', {'error': 'Failed to leave room'})
 
 @socketio.on('start_game')
 def handle_start_game(data):
@@ -271,11 +385,35 @@ def handle_start_game(data):
     game = game_manager.create_game(room_id, room['players'], room['game_mode'])
     
     # Deal initial cards
-    game.deal_cards()
+    deal_result = game.deal_cards()
+    if not deal_result['success']:
+        emit('game_error', {'error': deal_result.get('error', 'Failed to deal cards')})
+        game_manager.remove_game(room_id)
+        return
     
-    # Notify all players
+    # Build comprehensive game state with all player hands
+    game_state = game.get_public_state()
+    
+    # Add player-specific hands for each player
+    game_state['player_hands'] = {
+        i: [card.to_dict() for card in game.hands.get(i, [])]
+        for i in range(4)
+    }
+    
+    # Add mano index explicitly
+    game_state['manoIndex'] = game.state['manoIndex']
+    
+    # Add initial entanglement state
+    game_state['entanglement'] = game.get_full_entanglement_state()
+    
+    # Log game start
+    logger.info(f"Game started in room {room_id}, mode: {room['game_mode']}, mano: {game.state['manoIndex']}")
+    
+    # Notify all players with complete initial state
     socketio.emit('game_started', {
-        'game_state': game.get_public_state()
+        'success': True,
+        'game_state': game_state,
+        'game_mode': room['game_mode']
     }, room=room_id)
 
 @socketio.on('player_action')
@@ -334,26 +472,76 @@ def handle_discard_cards(data):
     
     game = game_manager.get_game(room_id)
     if not game:
+        logger.error(f"Game not found for room {room_id}")
         emit('game_error', {'error': 'Game not found'})
         return
     
+    # Validate player index
+    if not isinstance(player_index, int) or player_index < 0 or player_index > 3:
+        logger.error(f"Invalid player_index in discard: {player_index}")
+        emit('game_error', {'error': 'Invalid player index'})
+        return
+    
+    # Validate not in discard phase
+    if not game.state['waitingForDiscard']:
+        logger.warning(f"Player {player_index} tried to discard outside discard phase")
+        emit('game_error', {'error': 'Not in discard phase'})
+        return
+    
+    # Validate card indices (must be 0-4 cards)
+    if not isinstance(card_indices, list):
+        logger.error(f"Invalid card_indices format for player {player_index}")
+        emit('game_error', {'error': 'Invalid card indices format'})
+        return
+    
+    if len(card_indices) > 4:
+        logger.warning(f"Player {player_index} tried to discard {len(card_indices)} cards (max 4)")
+        emit('game_error', {'error': 'Cannot discard more than 4 cards'})
+        return
+    
+    if any(not isinstance(idx, int) or idx < 0 or idx > 3 for idx in card_indices):
+        logger.error(f"Invalid card index in list for player {player_index}")
+        emit('game_error', {'error': 'Invalid card index'})
+        return
+    
+    # Validate player hasn't already discarded
+    if player_index in game.state['cardsDiscarded']:
+        logger.warning(f"Player {player_index} tried to discard twice")
+        emit('game_error', {'error': 'You have already discarded'})
+        return
+    
+    # Process discard
     result = game.discard_cards(player_index, card_indices)
     
     if result['success']:
-        # Notify all players
+        logger.info(f"Player {player_index} discarded {len(card_indices)} cards in room {room_id}")
+        
+        # Notify all players with card dealer info (num cards only, not indices)
         socketio.emit('cards_discarded', {
             'player_index': player_index,
             'num_cards': len(card_indices),
             'game_state': game.get_public_state()
         }, room=room_id)
         
-        # If all players discarded, deal new cards
+        # If all players discarded, deal new cards and send to all
         if result.get('all_discarded'):
-            game.deal_new_cards()
-            socketio.emit('new_cards_dealt', {
-                'game_state': game.get_public_state()
-            }, room=room_id)
+            logger.info(f"All players discarded in room {room_id} - dealing new cards")
+            deal_result = game.deal_new_cards()
+            if deal_result and deal_result.get('success'):
+                # Send new game state to all players (includes new cards)
+                socketio.emit('new_cards_dealt', {
+                    'success': True,
+                    'game_state': game.get_public_state(),
+                    'player_hands': {
+                        i: [card.to_dict() for card in game.hands.get(i, [])]
+                        for i in range(4)
+                    }
+                }, room=room_id)
+            else:
+                logger.error(f"Failed to deal new cards in room {room_id}")
+                socketio.emit('game_error', {'error': 'Failed to deal new cards'}, room=room_id)
     else:
+        logger.error(f"Discard failed for player {player_index}: {result.get('error')}")
         emit('game_error', {'error': result.get('error', 'Failed to discard')})
 
 @socketio.on('get_game_state')
@@ -371,8 +559,174 @@ def handle_get_game_state(data):
         emit('game_error', {'error': 'Game not found'})
 
 
+# ==================== ENTANGLEMENT EVENTS ====================
+
+@socketio.on('get_entanglement_state')
+def handle_get_entanglement_state(data):
+    """Get current entanglement state for all pairs"""
+    room_id = data.get('room_id')
+    player_index = data.get('player_index', 0)
+    
+    game = game_manager.get_game(room_id)
+    if not game:
+        emit('game_error', {'error': 'Game not found'})
+        return
+    
+    entanglement_state = game.get_full_entanglement_state()
+    
+    emit('entanglement_state', {
+        'entanglement': entanglement_state,
+        'game_mode': game.game_mode
+    })
+
+@socketio.on('get_player_entanglement')
+def handle_get_player_entanglement(data):
+    """Get entanglement information for a specific player"""
+    room_id = data.get('room_id')
+    player_index = data.get('player_index', 0)
+    
+    game = game_manager.get_game(room_id)
+    if not game:
+        emit('game_error', {'error': 'Game not found'})
+        return
+    
+    entanglement_info = game.get_entanglement_info_for_player(player_index)
+    entangled_cards = game.get_player_entangled_cards(player_index)
+    
+    emit('player_entanglement_info', {
+        'player_index': player_index,
+        'entanglement_info': entanglement_info,
+        'entangled_cards': entangled_cards
+    })
+
+@socketio.on('play_card_with_entanglement')
+def handle_play_card_with_entanglement(data):
+    """Handle card play and check for entanglement activation"""
+    room_id = data.get('room_id')
+    player_index = data.get('player_index')
+    card_index = data.get('card_index')
+    
+    game = game_manager.get_game(room_id)
+    if not game:
+        emit('game_error', {'error': 'Game not found'})
+        return
+    
+    # Play the card and check for entanglement
+    result = game.play_card_and_check_entanglement(player_index, card_index)
+    
+    if result['success']:
+        # If entanglement was triggered, broadcast to all players
+        if result['entanglement']:
+            socketio.emit('entanglement_activated', {
+                'entanglement_data': result['entanglement'],
+                'card_played': result['card'],
+                'player_index': player_index,
+                'round': game.state['currentRound']
+            }, room=room_id)
+            
+            logger.info(f"Entanglement activated in room {room_id}: "
+                       f"Player {player_index} played entangled card")
+        
+        # Broadcast game state update
+        socketio.emit('game_update', {
+            'game_state': game.get_public_state(),
+            'player_states': {
+                i: game.get_player_state(i) for i in range(4)
+            }
+        }, room=room_id)
+    else:
+        emit('game_error', {'error': result.get('error', 'Failed to play card')})
+
+@socketio.on('trigger_declaration_collapse')
+def handle_trigger_declaration_collapse(data):
+    """Handle card collapse when player makes a declaration"""
+    room_id = data.get('room_id')
+    player_index = data.get('player_index')
+    declaration = data.get('declaration')  # 'tengo' or 'no_tengo'
+    round_name = data.get('round_name')  # 'PARES' or 'JUEGO'
+    
+    game = game_manager.get_game(room_id)
+    if not game:
+        emit('game_error', {'error': 'Game not found'})
+        logger.error(f"Game not found for room {room_id} in collapse event")
+        return
+    
+    if player_index != game.state['activePlayerIndex']:
+        emit('game_error', {'error': 'Not your turn'})
+        return
+    
+    # Trigger collapse
+    collapse_result = game.trigger_collapse_on_declaration(player_index, declaration, round_name)
+    
+    if collapse_result['success']:
+        # Broadcast collapse event to ALL players in the room
+        socketio.emit('cards_collapsed', {
+            'success': True,
+            'collapse_event': collapse_result['collapse_event'],
+            'penalty': collapse_result['penalty'],
+            'player_index': player_index,
+            'declaration': declaration,
+            'round_name': round_name,
+            'updated_hands': collapse_result['updated_hands'],
+            'timestamp': datetime.utcnow().isoformat()
+        }, room=room_id)
+        
+        logger.info(f"Collapse broadcast in room {room_id}: Player {player_index} made declaration '{declaration}' in {round_name}")
+    
+    if collapse_result['success']:
+        # Broadcast collapse event to ALL players
+        socketio.emit('cards_collapsed', {
+            'success': True,
+            'collapse_event': collapse_result['collapse_event'],
+            'player_index': player_index,
+            'round_name': round_name,
+            'collapse_reason': 'bet_acceptance',
+            'updated_hands': collapse_result['updated_hands'],
+            'timestamp': datetime.utcnow().isoformat()
+        }, room=room_id)
+        
+        logger.info(f"Collapse broadcast in room {room_id}: Player {player_index} accepted bet in {round_name}")
+    else:
+        socketio.emit('game_error', {'error': collapse_result.get('error', 'Failed to collapse cards')}, room=room_id)
+
+@socketio.on('trigger_final_collapse')
+def handle_trigger_final_collapse(data):
+    """Handle final collapse of all remaining entangled cards at hand end"""
+    room_id = data.get('room_id')
+    
+    game = game_manager.get_game(room_id)
+    if not game:
+        emit('game_error', {'error': 'Game not found'})
+        return
+    
+    # Trigger final collapse
+    collapse_result = game.trigger_final_collapse()
+    
+    if collapse_result['success']:
+        # Broadcast final collapse to ALL players
+        socketio.emit('final_cards_collapsed', {
+            'success': True,
+            'collapse_event': collapse_result['collapse_event'],
+            'final_hands': collapse_result['final_hands'],
+            'timestamp': datetime.utcnow().isoformat()
+        }, room=room_id)
+        
+        logger.info(f"Final collapse broadcast in room {room_id}: All remaining cards collapsed")
+    else:
+        socketio.emit('game_error', {'error': collapse_result.get('error', 'Failed to collapse cards')}, room=room_id)
+
+
 # ==================== RUN SERVER ====================
 
 if __name__ == '__main__':
-    logger.info("Starting Quantum Mus server...")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    host = os.environ.get('HOST', '0.0.0.0')
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    
+    # Log configuración inicial
+    logger.info(f"Starting Quantum Mus server on {host}:{port} (debug={debug})...")
+    logger.info(f"Environment: {'Render' if os.environ.get('RENDER') == 'true' else 'Local/Other'}")
+    logger.info("CORS allowed origins: " + ("* (all)" if CORS_ORIGINS == "*" else str(CORS_ORIGINS)))
+    
+    # socketio.run() manejará la configuración a través de gunicorn en producción
+    socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
