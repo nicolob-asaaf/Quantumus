@@ -2,6 +2,8 @@
 
 A multiplayer quantum card game using Flask, Socket.IO, and Qiskit. This project features real-time WebSocket communication and quantum mechanics in card gameplay.
 
+> **🎮 Want to start playing right now?** See **[HOW_TO_PLAY.md](HOW_TO_PLAY.md)** for a quick 3-step guide!
+
 ## 📁 Project Structure
 
 ```
